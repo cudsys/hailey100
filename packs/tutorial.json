@@ -1,0 +1,63 @@
+{
+ "hailey100": 1,
+ "name": "tutorial",
+ "about": "A gentle way in for new players.",
+ "decks": [
+  {
+   "id": "d-tutorial",
+   "name": "tutorial",
+   "counts": {
+    "p-1": 6,
+    "p-2": 6,
+    "p-5": 4,
+    "tenor": 1,
+    "p-d6": 3,
+    "p-m1": 3,
+    "p-m2": 3,
+    "p-m5": 2,
+    "p-md6": 0,
+    "send": 3,
+    "draw2": 3,
+    "skip": 2,
+    "shield": 2,
+    "tax": 2,
+    "gift": 2,
+    "inspire": 2,
+    "comeback": 1,
+    "party": 1,
+    "nudge": 2,
+    "recycle": 2,
+    "ward": 1,
+    "m-double": 1,
+    "m-bonus": 1,
+    "m-soft": 1
+   }
+  }
+ ],
+ "formats": [
+  {
+   "id": "f-tutorial",
+   "name": "tutorial",
+   "about": "First to 50 with a smaller, simpler deck. Mark anyone new and they get a tip whenever something comes up for the first time, plus suggested moves. Players who aren't new play as normal.",
+   "deck": "d-tutorial",
+   "rules": {
+    "target": 50,
+    "handSize": 5,
+    "handLimit": 8,
+    "floor": true,
+    "allowPass": true,
+    "hints": false,
+    "silly": false,
+    "draft": "off",
+    "draftPicks": 16,
+    "draftOffer": 4,
+    "pickban": "off",
+    "pbPool": 12,
+    "bans": 1,
+    "picks": 1,
+    "pickTo": "hand",
+    "newbies": true
+   }
+  }
+ ]
+}

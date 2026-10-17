@@ -1,0 +1,266 @@
+{
+ "hailey100": 1,
+ "name": "1k",
+ "about": "First to 1000. Double points starts in play, and the deck is stuffed with big point cards.",
+ "cards": [
+  {
+   "id": "1k-p20",
+   "name": "+20 points",
+   "type": "point",
+   "copies": 0,
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "20"
+    }
+   ]
+  },
+  {
+   "id": "1k-p50",
+   "name": "+50 points",
+   "type": "point",
+   "copies": 0,
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "50"
+    }
+   ]
+  },
+  {
+   "id": "1k-p2d6",
+   "name": "+2d6 points",
+   "type": "point",
+   "copies": 0,
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "2d6"
+    }
+   ]
+  },
+  {
+   "id": "1k-p3d6",
+   "name": "+3d6 points",
+   "type": "point",
+   "copies": 0,
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "3d6"
+    }
+   ]
+  },
+  {
+   "id": "1k-pd20",
+   "name": "+1d20 points",
+   "type": "point",
+   "copies": 0,
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "1d20"
+    }
+   ]
+  },
+  {
+   "id": "1k-m20",
+   "name": "−20 points",
+   "type": "point",
+   "copies": 0,
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "-20"
+    }
+   ]
+  },
+  {
+   "id": "1k-md20",
+   "name": "−1d20 points",
+   "type": "point",
+   "copies": 0,
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "-1d20"
+    }
+   ]
+  },
+  {
+   "id": "1k-jackpot",
+   "name": "jackpot",
+   "type": "act",
+   "copies": 0,
+   "sym": "7",
+   "effects": [
+    {
+     "op": "if",
+     "cond": "roll",
+     "v": 6,
+     "then": [
+      {
+       "op": "points",
+       "target": "self",
+       "amount": "100"
+      }
+     ],
+     "else": [
+      {
+       "op": "points",
+       "target": "self",
+       "amount": "10"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "1k-crescendo",
+   "name": "crescendo",
+   "type": "act",
+   "copies": 0,
+   "sym": "✶",
+   "effects": [
+    {
+     "op": "addToChange",
+     "amount": "3d6"
+    }
+   ]
+  },
+  {
+   "id": "1k-heist",
+   "name": "heist",
+   "type": "act",
+   "copies": 0,
+   "sym": "⤵",
+   "effects": [
+    {
+     "op": "transfer",
+     "target": "choose",
+     "amount": "3d6"
+    }
+   ]
+  },
+  {
+   "id": "1k-landslide",
+   "name": "landslide",
+   "type": "act",
+   "copies": 0,
+   "sym": "≋",
+   "effects": [
+    {
+     "op": "points",
+     "target": "others",
+     "amount": "-2d6"
+    }
+   ]
+  },
+  {
+   "id": "1k-encore",
+   "name": "encore",
+   "type": "ability",
+   "copies": 0,
+   "cooldown": 3,
+   "sym": "♪",
+   "effects": [
+    {
+     "op": "points",
+     "target": "self",
+     "amount": "2d6"
+    }
+   ]
+  }
+ ],
+ "decks": [
+  {
+   "id": "d-1k",
+   "name": "1k",
+   "counts": {
+    "p-1": 0,
+    "p-2": 2,
+    "p-5": 8,
+    "tenor": 10,
+    "p-d6": 4,
+    "p-m1": 1,
+    "p-m2": 2,
+    "p-m5": 4,
+    "p-md6": 2,
+    "1k-p20": 12,
+    "1k-p50": 6,
+    "1k-p2d6": 4,
+    "1k-p3d6": 5,
+    "1k-pd20": 6,
+    "1k-m20": 4,
+    "1k-md20": 3,
+    "send": 4,
+    "draw2": 3,
+    "skip": 2,
+    "reverse": 1,
+    "swap": 1,
+    "leech": 2,
+    "steal": 2,
+    "echo": 3,
+    "shield": 3,
+    "tax": 2,
+    "quake": 1,
+    "party": 1,
+    "gamble": 2,
+    "comeback": 1,
+    "mulligan": 1,
+    "calm": 0,
+    "doubledown": 3,
+    "again": 2,
+    "swaphands": 1,
+    "refresh": 1,
+    "inspire": 3,
+    "gift": 1,
+    "1k-jackpot": 2,
+    "1k-crescendo": 3,
+    "1k-heist": 2,
+    "1k-landslide": 1,
+    "1k-encore": 2,
+    "recycle": 2,
+    "nudge": 2,
+    "jinx": 1,
+    "overclock": 2,
+    "ward": 1,
+    "pickpocket": 1,
+    "m-double": 0,
+    "m-half": 0,
+    "m-upside": 0,
+    "m-lucky": 0,
+    "m-cursed": 0,
+    "m-fast": 0,
+    "m-abundance": 0,
+    "m-frenzy": 0,
+    "m-soft": 0,
+    "m-bonus": 0
+   }
+  }
+ ],
+ "formats": [
+  {
+   "id": "f-1k",
+   "name": "1k",
+   "about": "First to 1000. Everyone starts with 7 cards and double points is already in play.",
+   "deck": "d-1k",
+   "startMutator": "m-double",
+   "rules": {
+    "target": 1000,
+    "handSize": 7,
+    "handLimit": 10,
+    "floor": false,
+    "allowPass": false,
+    "hints": false
+   }
+  }
+ ]
+}

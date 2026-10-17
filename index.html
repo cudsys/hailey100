@@ -454,6 +454,13 @@ button, a, .card, [data-cid], label, select, input[type=checkbox], input[type=co
   input[type=text], input[type=number], input[type=password], select, textarea { font-size: 16px; }
 }
 @media (display-mode: standalone) { body { overscroll-behavior-y: none; } }
+
+details.fold { margin: 14px 0 0; }
+details.fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: '▸'; color: var(--accent); transition: transform .15s; display: inline-block; }
+details.fold[open] > summary::before { transform: rotate(90deg); }
+.ruleset.inline { margin: 8px 0 2px; padding: 10px; border: 1px dashed var(--line); border-radius: 8px; background: color-mix(in srgb, var(--card) 70%, transparent); }
 </style>
 </head>
 <body>
@@ -537,6 +544,7 @@ const OPS = {
   double: { label: 'Multiply the next change', f: ['x'] },
   refresh: { label: 'Make abilities ready', f: ['target'] },
   mulligan: { label: 'Redraw your hand', f: ['n'] },
+  rules: { label: 'Change the rules for a while', f: ['target', 'dur', 'rules'] },
   if: { label: 'If… then… otherwise…', f: ['cond', 'then', 'else'] },
 };
 const CONDS = {
@@ -606,6 +614,7 @@ function descEffect(e) {
     case 'double': return `The next point change this turn is ×${e.x ?? 2}.`;
     case 'refresh': return `${t === 'self' ? 'All your' : cap(TARGETS[t]) + "'s"} abilities are ready again.`;
     case 'mulligan': return `Discard your hand and draw that many cards${+e.n ? `, plus ${e.n}` : ''}.`;
+    case 'rules': { const R = descRules(e.rules, t === 'self' ? 'character' : 'them'); if (!R) return 'Changes no rules.'; return t === 'self' ? `${cap(durText(e))}: ${R}` : `${cap(TARGETS[t] || t)}, ${durText(e)}: ${R}`; }
     case 'if': {
       const th = descEffects(e.then || []) || 'nothing happens.';
       const el = descEffects(e.else || []);
@@ -621,24 +630,28 @@ function descEffect(e) {
   return '';
 }
 function descEffects(list) { return (list || []).map(descEffect).filter(Boolean).join(' '); }
+function durText(e) { return e.dur === 'game' ? 'for the rest of the game' : e.dur === 'turns' ? `for ${plural(Math.max(1, +e.n || 1), 'turn')}` : 'until the end of this turn'; }
+const lcFirst = (t) => (t ? t.charAt(0).toLowerCase() + t.slice(1) : t);
 function descRules(r, scope) {
   if (!r) return '';
-  const you = scope === 'character';
+  const own = scope === 'character' || scope === 'them';
+  const W = scope === 'character' ? 'Your' : scope === 'them' ? 'Their' : 'All';
+  const SUB = scope === 'character' ? 'You' : scope === 'them' ? 'They' : 'Everyone';
   const out = [];
   const num = (k) => r[k] !== undefined && r[k] !== '' && r[k] !== null;
-  if (num('mult') && +r.mult !== 1) out.push(+r.mult === 2 ? `${you ? 'Your' : 'All'} point changes are doubled.` : +r.mult === 0.5 ? `${you ? 'Your' : 'All'} point changes are halved.` : `${you ? 'Your' : 'All'} point changes are ×${r.mult}.`);
-  if (num('gainMult') && +r.gainMult !== 1) out.push(`${you ? 'Your' : 'All'} point gains are ×${r.gainMult}.`);
-  if (num('lossMult') && +r.lossMult !== 1) out.push(+r.lossMult === 0.5 ? `${you ? 'Your' : 'All'} point losses are halved.` : `${you ? 'Your' : 'All'} point losses are ×${r.lossMult}.`);
-  if (+r.gainAdd) out.push(`${you ? 'Your' : 'Every'} point gain${you ? 's get' : ' gets'} +${r.gainAdd}.`);
-  if (+r.lossReduce) out.push(`${you ? 'Your' : 'Every'} point loss${you ? 'es are' : ' is'} ${r.lossReduce} smaller.`);
+  if (num('mult') && +r.mult !== 1) out.push(+r.mult === 2 ? `${W} point changes are doubled.` : +r.mult === 0.5 ? `${W} point changes are halved.` : `${W} point changes are ×${r.mult}.`);
+  if (num('gainMult') && +r.gainMult !== 1) out.push(`${W} point gains are ×${r.gainMult}.`);
+  if (num('lossMult') && +r.lossMult !== 1) out.push(+r.lossMult === 0.5 ? `${W} point losses are halved.` : `${W} point losses are ×${r.lossMult}.`);
+  if (+r.gainAdd) out.push(`${own ? W : 'Every'} point gain${own ? 's get' : ' gets'} +${r.gainAdd}.`);
+  if (+r.lossReduce) out.push(`${own ? W : 'Every'} point loss${own ? 'es are' : ' is'} ${r.lossReduce} smaller.`);
   if (r.flip) out.push('Point gains become losses, and losses become gains.');
-  if (r.dice === 'adv') out.push(`${you ? 'Your dice are' : 'Dice are'} rolled twice, keeping the higher roll.`);
-  if (r.dice === 'dis') out.push(`${you ? 'Your dice are' : 'Dice are'} rolled twice, keeping the lower roll.`);
-  if (+r.cooldownTick > 1) out.push(`${you ? 'Your ability' : 'Ability'} cooldowns tick down ${r.cooldownTick}× as fast.`);
-  if (+r.extraDraw) out.push(`${you ? 'You draw' : 'Everyone draws'} ${r.extraDraw} extra card${+r.extraDraw === 1 ? '' : 's'} each turn.`);
-  if (+r.extraPlays) out.push(`${you ? 'You can' : 'Everyone can'} play up to ${1 + +r.extraPlays} cards each turn.`);
-  if (+r.handLimit) out.push(`${you ? 'Your' : 'The'} hand limit is ${r.handLimit} higher.`);
-  if (r.floor) out.push(`${you ? "You can't" : "Nobody can"} drop below 0 points.`);
+  if (r.dice === 'adv') out.push(`${own ? W + ' dice are' : 'Dice are'} rolled twice, keeping the higher roll.`);
+  if (r.dice === 'dis') out.push(`${own ? W + ' dice are' : 'Dice are'} rolled twice, keeping the lower roll.`);
+  if (+r.cooldownTick > 1) out.push(`${own ? W + ' ability' : 'Ability'} cooldowns tick down ${r.cooldownTick}× as fast.`);
+  if (+r.extraDraw) out.push(`${own ? SUB + (scope === 'them' ? ' draw' : ' draw') : 'Everyone draws'} ${r.extraDraw} extra card${+r.extraDraw === 1 ? '' : 's'} each turn.`);
+  if (+r.extraPlays) out.push(`${SUB} can play up to ${1 + +r.extraPlays} cards each turn.`);
+  if (+r.handLimit) out.push(`${own ? W : 'The'} hand limit is ${r.handLimit} higher.`);
+  if (r.floor) out.push(`${scope === 'character' ? "You can't" : scope === 'them' ? "They can't" : 'Nobody can'} drop below 0 points.`);
   return out.join(' ');
 }
 function descStart(s) {
@@ -652,12 +665,18 @@ function descStart(s) {
   if (s.hints) out.push('Shows a suggested move on your turn.');
   return out.join(' ');
 }
+// every card type can have all three parts: effects (what happens when it is played, used, comes into play or the game starts),
+// standing rules, and (characters) starting extras. what the rules cover depends on the type.
 function autoText(def) {
-  if (def.type === 'mutator') return descRules(def.rules, 'mutator');
-  if (def.type === 'character') return [descStart(def.start), descRules(def.rules, 'character')].filter(Boolean).join(' ');
-  const t = descEffects(def.effects);
-  if (def.type === 'ability') return t;
-  return t;
+  const parts = [];
+  if (def.type === 'character') parts.push(descStart(def.start));
+  const fx = descEffects(def.effects);
+  if (fx) parts.push(def.type === 'mutator' ? `When played: ${fx}` : def.type === 'character' ? `At the start: ${fx}` : fx);
+  if (def.rules && Object.keys(def.rules).length) {
+    const R = descRules(def.rules, def.type === 'mutator' ? 'mutator' : 'character');
+    if (R) parts.push(def.type === 'ability' ? `While you have it: ${lcFirst(R)}` : (def.type === 'point' || def.type === 'act') ? `For the rest of the turn: ${lcFirst(R)}` : R);
+  }
+  return parts.filter(Boolean).join(' ');
 }
 function cardText(def) { return (def.text && def.text.trim()) || autoText(def) || 'Does nothing yet.'; }
 function hasOp(list, op) { return (list || []).some((e) => e.op === op || (e.op === 'if' && (hasOp(e.then, op) || hasOp(e.else, op)))); }
@@ -702,7 +721,7 @@ function newGame(cfg, lib) {
     G.players.push({
       id: i, name: pc.name || `Player ${i + 1}`, bot: pc.kind === 'bot', remote: pc.kind === 'remote', diff: pc.diff || 'normal', color: /^#[0-9a-f]{6}$/i.test(pc.color || '') ? pc.color : PCOLORS[i % PCOLORS.length],
       isNew: !!(pc.isNew && pc.kind !== 'bot' && G.cfg.newbies),
-      points: 0, hand: [], abilities: [], character: ch, shield: 0, skip: 0, extra: 0,
+      points: 0, hand: [], abilities: [], mods: [], character: ch, shield: 0, skip: 0, extra: 0,
     });
   });
   for (const p of G.players) {
@@ -718,6 +737,16 @@ function newGame(cfg, lib) {
   if (cfg.startMutator && CARD[cfg.startMutator]?.type === 'mutator') G.mutator = inst(cfg.startMutator);
   G.cur = cfg.first === 'random' ? rnd(G.players.length) : 0;
   return G;
+}
+
+// characters can have effects too: they happen once, at the start of the game
+async function gameStart(G, io) {
+  if (G.began || G.turnNo > 0) return;
+  G.began = true;
+  for (const p of G.players) {
+    const d = p.character && CARD[p.character];
+    if (d && (d.effects || []).length) { io.log(`${nm(p)} starts as ${cn(p.character)}`, 'dim'); await runEffects(G, io, p, d.effects, { name: d.name }); }
+  }
 }
 
 // ---------- before the game: pick/ban, then drafting ----------
@@ -807,7 +836,7 @@ async function pregame(G, io) {
   io.log('The game begins.', 'dim');
 }
 // how much a bot wants a card while drafting, picking or banning
-const OPV = { swapPoints: 6, extraTurn: 6, send: 4, transfer: 4.5, steal: 3.5, double: 4.5, addToChange: 4, echo: 3.5, shield: 3, draw: 3, skip: 3.5, swapHands: 3, give: 2.5 };
+const OPV = { rules: 3.5, swapPoints: 6, extraTurn: 6, send: 4, transfer: 4.5, steal: 3.5, double: 4.5, addToChange: 4, echo: 3.5, shield: 3, draw: 3, skip: 3.5, swapHands: 3, give: 2.5 };
 function draftValue(G, pid, id, purpose) {
   const d = CARD[id]; if (!d) return 0;
   if (d.type === 'point') { const v = staticValue(d); return purpose === 'hand' || purpose === 'pick' ? (v > 0 ? v : -2) : Math.abs(v) * (v > 0 ? 0.8 : 0.4); }
@@ -819,14 +848,21 @@ function draftValue(G, pid, id, purpose) {
   return v;
 }
 
-function rulesPair(G, p) {
-  const m = G.mutator ? CARD[G.mutator.c]?.rules || {} : {};
-  const c = p && p.character ? CARD[p.character]?.rules || {} : {};
-  return [m, c];
+// where the rules in force come from: the mutator (everyone), the player's character, abilities they hold
+// (passive rules), and rules granted for a while by cards ("Change the rules for a while")
+function ruleList(G, p) {
+  const out = [];
+  if (G.mutator) { const d = CARD[G.mutator.c]; if (d?.rules) out.push({ R: d.rules, name: d.name || 'Mutator' }); }
+  if (p) {
+    if (p.character) { const d = CARD[p.character]; if (d?.rules) out.push({ R: d.rules, name: d.name || 'Character' }); }
+    for (const a of p.abilities || []) { const d = CARD[a.c]; if (d?.rules) out.push({ R: d.rules, name: d.name }); }
+    for (const m of p.mods || []) out.push({ R: m.rules, name: m.name });
+  }
+  return out;
 }
-function sumRule(G, p, k) { const [m, c] = rulesPair(G, p); return (+m[k] || 0) + (+c[k] || 0); }
-function anyRule(G, p, k) { const [m, c] = rulesPair(G, p); return !!(m[k] || c[k]); }
-function mulRule(G, p, k) { const [m, c] = rulesPair(G, p); const f = (x) => (x === undefined || x === '' || x === null ? 1 : +x || 1); return f(m[k]) * f(c[k]); }
+function sumRule(G, p, k) { return ruleList(G, p).reduce((a, x) => a + (+x.R[k] || 0), 0); }
+function anyRule(G, p, k) { return ruleList(G, p).some((x) => x.R[k]); }
+function mulRule(G, p, k) { const f = (x) => (x === undefined || x === '' || x === null ? 1 : +x || 1); return ruleList(G, p).reduce((a, x) => a * f(x.R[k]), 1); }
 function handLimit(G, p) { return G.cfg.handLimit + sumRule(G, p, 'handLimit'); }
 function P(G, id) { return G.players.find((p) => p.id === id); }
 function nm(p) { return `<b class="pn" style="--pc:${p.color}">${esc(p.name)}</b>`; }
@@ -854,8 +890,7 @@ function drawCards(G, p, n, respectLimit) {
 }
 
 function rollDie(G, actor, sides) {
-  const [m, c] = rulesPair(G, actor);
-  let mode = (m.dice === 'adv') + (c.dice === 'adv') - (m.dice === 'dis') - (c.dice === 'dis');
+  let mode = ruleList(G, actor).reduce((a, x) => a + (x.R.dice === 'adv') - (x.R.dice === 'dis'), 0);
   let r = 1 + rnd(sides);
   if (mode > 0) r = Math.max(r, 1 + rnd(sides));
   if (mode < 0) r = Math.min(r, 1 + rnd(sides));
@@ -920,8 +955,7 @@ async function pointChange(G, io, t, base, actor) {
     steps.push(`${esc(b.name)} ${neg ? '−' : '+'}${r.t.replace(/^−/, '')} = ${signed(v)}`);
   }
   if (tm.next.length) { for (const n of tm.next) { v *= n.x; steps.push(`${esc(n.name)} ×${n.x} = ${signed(v)}`); } tm.next = []; }
-  if (G.mutator) v = applyRules(v, CARD[G.mutator.c]?.rules, CARD[G.mutator.c]?.name || 'Mutator', steps);
-  if (t.character) v = applyRules(v, CARD[t.character]?.rules, CARD[t.character]?.name || 'Character', steps);
+  for (const x of ruleList(G, t)) v = applyRules(v, x.R, x.name, steps);
   v = roundAway(v);
   if (v < 0 && t.shield > 0) { t.shield--; steps.push('blocked by a shield'); v = 0; }
   const before = t.points; t.points += v;
@@ -1083,6 +1117,16 @@ async function runEffect(G, io, actor, e, src) {
     }
     case 'boost': if (G.turn) { G.turn.boost.push({ amt: e.amount || '1d6', name: src.name }); io.log(`${esc(src.name)}: every point change this turn is ${amtCore(parseAmt(e.amount || '1d6') || { n: 0, flat: '?' })} bigger`); } return;
     case 'double': if (G.turn) { G.turn.next.push({ x: +e.x || 2, name: src.name }); io.log(`${esc(src.name)}: the next point change is ×${+e.x || 2}`); } return;
+    case 'rules': {
+      const R = {}; for (const [k] of RULES) { const v = (e.rules || {})[k]; if (v !== undefined && v !== '' && v !== false && v !== null) R[k] = v; }
+      if (!Object.keys(R).length) return;
+      const dur = e.dur === 'game' || e.dur === 'turns' ? e.dur : 'turn';
+      for (const t of await resolveTargets(G, io, actor, e, src)) {
+        (t.mods ||= []).push({ rules: R, name: src.name, dur, left: Math.max(1, +e.n || 1) });
+        io.log(t === actor ? `${esc(src.name)}: ${durText({ dur, n: e.n })}, ${lcFirst(descRules(R, 'character'))}` : `${esc(src.name)}: ${nm(t)}, ${durText({ dur, n: e.n })}: ${descRules(R, 'them')}`);
+      }
+      return;
+    }
     case 'refresh': for (const t of await resolveTargets(G, io, actor, e, src)) { t.abilities.forEach((a) => (a.cd = 0)); io.log(`${nm(t)}'s abilities are ready`); } return;
     case 'mulligan': {
       const k = actor.hand.length; G.discard.push(...actor.hand); actor.hand = [];
@@ -1117,8 +1161,11 @@ async function playCard(G, io, p, inst, opt = {}) {
   if (def.type === 'ability') { p.abilities.push({ u: inst.u, c: inst.c, cd: 0 }); io.log(`${cn(inst.c)} is ready for ${nm(p)} to use`); return; }
   if (def.type === 'mutator') {
     if (G.mutator) { io.log(`${cn(G.mutator.c)} is replaced`); G.discard.push(G.mutator); }
-    G.mutator = inst; io.log(`${cn(inst.c)} is now in play: ${esc(cardText(def))}`); return;
+    G.mutator = inst; io.log(`${cn(inst.c)} is now in play: ${esc(cardText(def))}`);
+    if ((def.effects || []).length) await runEffects(G, io, p, def.effects, { name: def.name });
+    return;
   }
+  if (def.rules && Object.keys(def.rules).length) { (p.mods ||= []).push({ rules: def.rules, name: def.name, dur: 'turn', left: 1 }); io.log(`${cn(inst.c)}: ${descRules(def.rules, 'character')} (until the end of the turn)`, 'dim'); }
   await runEffects(G, io, p, def.effects || [], { name: def.name });
   if (!hasOp(def.effects, 'echo')) G.last = inst.c;
   G.discard.push(inst);
@@ -1134,7 +1181,7 @@ async function useAbility(G, io, p, ab) {
 
 function maxPlays(G, p) { return 1 + sumRule(G, p, 'extraPlays'); }
 function actionOptions(G, p) {
-  const opts = p.abilities.filter((a) => a.cd === 0 && CARD[a.c]).map((a) => 'a:' + a.u);
+  const opts = p.abilities.filter((a) => a.cd === 0 && CARD[a.c] && (CARD[a.c].effects || []).length).map((a) => 'a:' + a.u);
   const canPlay = G.turn.plays < maxPlays(G, p);
   if (canPlay) for (const c of p.hand) opts.push('c:' + c.u);
   const mayEnd = !canPlay || !p.hand.length || G.turn.plays > 0 || G.cfg.allowPass;
@@ -1183,6 +1230,11 @@ async function actionLoop(G, io) {
 }
 
 function endTurn(G, io) {
+  for (const p of G.players) {
+    if (!p.mods || !p.mods.length) continue;
+    const own = G.turn && G.turn.pid === p.id;
+    p.mods = p.mods.filter((m) => { if (m.dur === 'turn') return false; if (m.dur === 'turns' && own) { m.left--; return m.left > 0; } return true; });
+  }
   for (const p of G.players) trimHand(G, io, p);
   for (const p of G.players) {
     const tick = Math.max(1, Math.round(mulRule(G, p, 'cooldownTick')));
@@ -1427,7 +1479,7 @@ const DEFAULT_CARDS = [
 const NET = {
   role: null, peer: null, code: '', status: '', guests: [], pending: new Map(), askId: 0,
   opts: { pass: '', max: 4, spectators: true, timer: 0 },
-  io: null, game: null,
+  io: null, game: null, prefill: '',
   // guest side
   conn: null, pid: null, myRole: null, myName: '', lobby: null, started: false, view: null, log: [], ask: null, answered: null, hl: '', hlFull: '', looked: false,
 };
@@ -1637,7 +1689,7 @@ function netFromHost(m) {
   if (m.t === 'refuse') { toast(m.why || "The host didn't let you in."); netLeave(true); return; }
   if (m.t === 'closed') { toast('The host closed the room.'); netLeave(true); return; }
   if (m.t === 'kick') { toast('The host took you out of the room.'); netLeave(true); return; }
-  if (m.t === 'welcome') { NET.status = 'in'; NET.myRole = m.role; NET.myName = m.name; }
+  if (m.t === 'welcome') { NET.prefill = ''; NET.status = 'in'; NET.myRole = m.role; NET.myName = m.name; }
   else if (m.t === 'lobby') { NET.lobby = m.room; if (!m.room.inGame) { NET.started = false; NET.view = null; NET.ask = null; ASK = []; G = null; } }
   else if (m.t === 'start') {
     NET.started = true; NET.pid = m.pid; NET.log = []; NET.view = null; NET.ask = null; NET.answered = null; NET.hl = ''; NET.hlFull = ''; NET.looked = false;
@@ -1675,8 +1727,8 @@ function netPanelHTML() {
     const watchers = NET.guests.filter((g) => g.role === 'spectator');
     return `<div class="netbox">
       <div class="row"><span class="label" style="margin:0">Online room</span><span class="spacer"></span><button class="btn sm danger" data-net="close">Close room</button></div>
-      ${NET.status === 'open' ? `<div class="roomcode"><span class="muted">room code</span><b id="roomcode">${esc(NET.code)}</b><button class="btn sm" data-net="copy">Copy</button></div>
-        <p class="note">Friends open Hailey 100, press <b>Join a room</b> and type this code. They show up in the player list above.</p>` : `<p class="muted thinking">Opening the room</p>`}
+      ${NET.status === 'open' ? `<div class="roomcode"><span class="muted">room code</span><b id="roomcode">${esc(NET.code)}</b><button class="btn sm" data-net="copy">Copy</button><button class="btn sm primary" data-net="share">Share link</button></div>
+        <p class="note">Send friends the link (or the code: they open Hailey 100, press <b>Join a room</b> and type it). They show up in the player list above.</p>` : `<p class="muted thinking">Opening the room</p>`}
       <div class="opts">
         <div class="opt"><div class="what">Most people in the room<small>Including you. Bots don't count</small></div><input type="number" id="net-max" min="2" max="6" value="${o.max}"></div>
         <div class="opt"><div class="what">Password<small>Leave empty for no password</small></div><input type="text" id="net-pass" value="${esc(o.pass)}" maxlength="20" placeholder="none" style="width:130px"></div>
@@ -1693,7 +1745,7 @@ function netPanelHTML() {
     <div class="netgrid">
       <div><button class="btn primary" data-net="host">Host a room</button><p class="note">You get a code to send to friends. The game runs on your computer, so keep it open while you play.</p></div>
       <form id="joinform" class="joinform">
-        <input type="text" id="join-code" placeholder="Room code" maxlength="8" value="" autocomplete="off" style="text-transform:uppercase">
+        <input type="text" id="join-code" placeholder="Room code" maxlength="8" value="${esc(NET.prefill || '')}" autocomplete="off" style="text-transform:uppercase">
         <div class="row" style="gap:6px;flex-wrap:nowrap"><input type="color" class="pcol" id="join-color" value="${esc(okColor(last.color) ? last.color : me?.color || PCOLORS[0])}" title="Your colour"><input type="text" id="join-name" placeholder="Your name" maxlength="18" value="${esc(last.name || me?.name || '')}" style="flex:1;min-width:0"></div>
         <input type="text" id="join-pass" placeholder="Password, if there is one" maxlength="20">
         <div class="row"><label class="newchk"><input type="checkbox" id="join-watch"> just watch</label><span class="spacer"></span><button class="btn" type="submit">Join a room</button></div>
@@ -1705,9 +1757,31 @@ function onNetClick(b) {
   const k = b.dataset.net;
   if (k === 'host') netHost();
   else if (k === 'close') openConfirm('Close the online room?', 'Everyone online is disconnected. In a game that is still going, bots take over their seats.', 'Close room', () => netClose());
+  else if (k === 'share') netShare();
   else if (k === 'copy') { navigator.clipboard?.writeText(NET.code).then(() => toast('Copied the room code.'), () => toast(`The code is ${NET.code}`)); }
   else if (k === 'leave') openConfirm('Leave the room?', NET.started ? 'A bot plays for you until you rejoin with the same name.' : 'You can join again with the code.', 'Leave room', () => netLeave());
   else if (k === 'look') { NET.looked = true; render(); }
+}
+// a link that opens the game with this room's code filled in. it needs the game to be on a website: a file on one computer has no address to send
+function netShareURL() { if (!/^https?:$/.test(location.protocol) || !NET.code) return ''; return `${location.origin}${location.pathname}?room=${NET.code}`; }
+function netShare() {
+  const url = netShareURL();
+  if (!url) { toast(`A link only works once the game is on a website. Send the code ${NET.code} instead.`); return; }
+  const done = () => navigator.clipboard?.writeText(url).then(() => toast('Copied the link to the room.'), () => toast(url));
+  if (navigator.share) navigator.share({ title: 'hailey 100', text: `Join my hailey 100 room (${NET.code})`, url }).catch((e) => { if (e && e.name !== 'AbortError') done(); });
+  else done();
+}
+// opening ?room=CODE fills the code in. someone who has played online before joins straight away with their saved name
+function netFromUrl() {
+  let code = '';
+  try { code = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); } catch {}
+  if (code.length < 4) return;
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch {}
+  NET.prefill = code; TAB = 'play';
+  let last = {}; try { last = JSON.parse(store.get('h100.net')) || {}; } catch {}
+  if (last.name && netReady()) { toast(`Joining room ${code} as ${last.name}.`); netJoin(code, last.name, okColor(last.color) ? last.color : freeColor(), '', false); return; }
+  render(); toast(`Room ${code}: pick a name and press Join a room.`);
+  setTimeout(() => { const n = document.getElementById('join-name'); if (n) { n.scrollIntoView({ block: 'center' }); n.focus(); } }, 80);
 }
 function onNetInput(el, e) {
   if (!el.id?.startsWith('net-')) return false;
@@ -1829,7 +1903,7 @@ if (!MINE) {
   store.set('h100.mine', JSON.stringify(MINE));
 }
 // packs that come with the game, used until a packs folder is connected
-const BUNDLED_PACKS = [{"hailey100": 1, "name": "1k", "about": "First to 1000. Double points starts in play, and the deck is stuffed with big point cards.", "cards": [{"id": "1k-p20", "name": "+20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "20"}]}, {"id": "1k-p50", "name": "+50 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "50"}]}, {"id": "1k-p2d6", "name": "+2d6 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "2d6"}]}, {"id": "1k-p3d6", "name": "+3d6 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "3d6"}]}, {"id": "1k-pd20", "name": "+1d20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "1d20"}]}, {"id": "1k-m20", "name": "−20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "-20"}]}, {"id": "1k-md20", "name": "−1d20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "-1d20"}]}, {"id": "1k-jackpot", "name": "jackpot", "type": "act", "copies": 0, "sym": "7", "effects": [{"op": "if", "cond": "roll", "v": 6, "then": [{"op": "points", "target": "self", "amount": "100"}], "else": [{"op": "points", "target": "self", "amount": "10"}]}]}, {"id": "1k-crescendo", "name": "crescendo", "type": "act", "copies": 0, "sym": "✶", "effects": [{"op": "addToChange", "amount": "3d6"}]}, {"id": "1k-heist", "name": "heist", "type": "act", "copies": 0, "sym": "⤵", "effects": [{"op": "transfer", "target": "choose", "amount": "3d6"}]}, {"id": "1k-landslide", "name": "landslide", "type": "act", "copies": 0, "sym": "≋", "effects": [{"op": "points", "target": "others", "amount": "-2d6"}]}, {"id": "1k-encore", "name": "encore", "type": "ability", "copies": 0, "cooldown": 3, "sym": "♪", "effects": [{"op": "points", "target": "self", "amount": "2d6"}]}], "decks": [{"id": "d-1k", "name": "1k", "counts": {"p-1": 0, "p-2": 2, "p-5": 8, "tenor": 10, "p-d6": 4, "p-m1": 1, "p-m2": 2, "p-m5": 4, "p-md6": 2, "1k-p20": 12, "1k-p50": 6, "1k-p2d6": 4, "1k-p3d6": 5, "1k-pd20": 6, "1k-m20": 4, "1k-md20": 3, "send": 4, "draw2": 3, "skip": 2, "reverse": 1, "swap": 1, "leech": 2, "steal": 2, "echo": 3, "shield": 3, "tax": 2, "quake": 1, "party": 1, "gamble": 2, "comeback": 1, "mulligan": 1, "calm": 0, "doubledown": 3, "again": 2, "swaphands": 1, "refresh": 1, "inspire": 3, "gift": 1, "1k-jackpot": 2, "1k-crescendo": 3, "1k-heist": 2, "1k-landslide": 1, "1k-encore": 2, "recycle": 2, "nudge": 2, "jinx": 1, "overclock": 2, "ward": 1, "pickpocket": 1, "m-double": 0, "m-half": 0, "m-upside": 0, "m-lucky": 0, "m-cursed": 0, "m-fast": 0, "m-abundance": 0, "m-frenzy": 0, "m-soft": 0, "m-bonus": 0}}], "formats": [{"id": "f-1k", "name": "1k", "about": "First to 1000. Everyone starts with 7 cards and double points is already in play.", "deck": "d-1k", "startMutator": "m-double", "rules": {"target": 1000, "handSize": 7, "handLimit": 10, "floor": false, "allowPass": false, "hints": false}}], "file": "1k.json"}, {"hailey100": 1, "name": "1v1 formats", "about": "Casual and competitive formats and decks for two players.", "decks": [{"id": "d-1v1-casual", "name": "1v1 casual", "counts": {"p-1": 5, "p-2": 5, "p-5": 5, "tenor": 2, "p-d6": 4, "p-m1": 3, "p-m2": 3, "p-m5": 2, "p-md6": 1, "send": 3, "draw2": 3, "skip": 1, "reverse": 0, "swap": 1, "leech": 2, "steal": 1, "echo": 2, "shield": 3, "tax": 1, "quake": 0, "party": 0, "gamble": 3, "comeback": 2, "mulligan": 1, "calm": 2, "doubledown": 2, "again": 1, "swaphands": 0, "refresh": 1, "inspire": 3, "gift": 1, "recycle": 2, "nudge": 2, "jinx": 0, "overclock": 1, "ward": 2, "pickpocket": 0, "m-double": 1, "m-half": 0, "m-upside": 1, "m-lucky": 2, "m-cursed": 0, "m-fast": 1, "m-abundance": 2, "m-frenzy": 1, "m-soft": 2, "m-bonus": 2}}, {"id": "d-1v1-comp", "name": "1v1 competitive", "counts": {"p-1": 4, "p-2": 5, "p-5": 5, "tenor": 2, "p-d6": 1, "p-m1": 2, "p-m2": 3, "p-m5": 3, "p-md6": 1, "send": 3, "draw2": 2, "skip": 2, "reverse": 0, "swap": 0, "leech": 2, "steal": 2, "echo": 2, "shield": 2, "tax": 1, "quake": 0, "party": 0, "gamble": 0, "comeback": 1, "mulligan": 1, "calm": 2, "doubledown": 2, "again": 1, "swaphands": 1, "refresh": 1, "inspire": 3, "gift": 1, "recycle": 2, "nudge": 1, "jinx": 1, "overclock": 1, "ward": 1, "pickpocket": 1, "m-double": 1, "m-half": 1, "m-upside": 1, "m-lucky": 0, "m-cursed": 0, "m-fast": 1, "m-abundance": 1, "m-frenzy": 1, "m-soft": 0, "m-bonus": 0}}], "formats": [{"id": "f-1v1-casual", "name": "1v1 casual", "about": "Forgiving: no going below 0, passing allowed, kinder deck.", "players": 2, "deck": "d-1v1-casual", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": true, "allowPass": true, "hints": false, "turnCheck": 50}}, {"id": "f-1v1-comp", "name": "1v1 competitive", "about": "Fewer coin flips and more ways to mess with each other. Smaller hand limit.", "players": 2, "deck": "d-1v1-comp", "rules": {"target": 100, "handSize": 5, "handLimit": 7, "floor": false, "allowPass": false, "hints": false}}], "file": "1v1.json"}, {"hailey100": 1, "name": "draft and pick/ban", "about": "Formats that build the deck or your hand before anyone plays.", "formats": [{"id": "f-draft", "name": "draft", "about": "Point cards are in. Everything else gets drafted into the deck, then everyone drafts their starting hand from packs passed around the table.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "both", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand"}}, {"id": "f-handdraft", "name": "hand draft", "about": "Everyone gets a pack, takes a card and passes the rest on until your starting hands are full.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "hands", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand"}}, {"id": "f-pickban", "name": "pick and ban", "about": "12 random cards go on the table. Everyone bans two (every copy leaves the deck), then picks one to start with.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "off", "draftPicks": 16, "draftOffer": 4, "pickban": "random", "pbPool": 12, "bans": 2, "picks": 1, "pickTo": "hand"}}, {"id": "f-1v1-draft", "name": "1v1 draft", "about": "Competitive 1v1: ban two from the whole deck, pick one into your hand, then draft the rest of your hand.", "players": 2, "deck": "d-1v1-comp", "rules": {"target": 100, "handSize": 5, "handLimit": 7, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "hands", "draftPicks": 16, "draftOffer": 4, "pickban": "deck", "pbPool": 12, "bans": 2, "picks": 1, "pickTo": "hand"}}], "file": "draft.json"}, {"hailey100": 1, "name": "silly", "about": "Ridiculous, unbalanced cards. They're marked silly, so they only show up in formats that allow silly cards.", "cards": [{"id": "s-bass", "name": "the bass", "type": "point", "copies": 1, "sym": "50", "effects": [{"op": "points", "target": "self", "amount": "50"}], "silly": true}, {"id": "s-everyone", "name": "everybody wins", "type": "act", "copies": 1, "sym": "♥", "effects": [{"op": "points", "target": "all", "amount": "20"}], "silly": true}, {"id": "s-loop", "name": "infinite loop", "type": "act", "copies": 1, "sym": "∞", "effects": [{"op": "extraTurn"}, {"op": "extraTurn"}, {"op": "draw", "target": "self", "n": 3}], "silly": true}, {"id": "s-heist", "name": "grand theft deck", "type": "act", "copies": 1, "sym": "⇠", "effects": [{"op": "steal", "target": "choose", "n": 3}, {"op": "transfer", "target": "choose", "amount": "2d6"}], "silly": true}, {"id": "s-nuke", "name": "nuke", "type": "act", "copies": 1, "sym": "☢", "effects": [{"op": "points", "target": "others", "amount": "-25"}], "silly": true}, {"id": "s-fate", "name": "coin of fate", "type": "act", "copies": 2, "sym": "◐", "effects": [{"op": "if", "cond": "roll", "v": 4, "then": [{"op": "points", "target": "self", "amount": "50"}], "else": [{"op": "points", "target": "self", "amount": "-50"}]}], "silly": true}, {"id": "s-conductor", "name": "the conductor", "type": "ability", "copies": 1, "cooldown": 1, "sym": "♫", "effects": [{"op": "points", "target": "self", "amount": "1d6"}], "silly": true}, {"id": "s-triple", "name": "triple threat", "type": "mutator", "copies": 1, "sym": "×3", "rules": {"mult": 3}, "silly": true}, {"id": "s-soloist", "name": "the soloist", "type": "character", "sym": "★", "start": {"points": 50}, "silly": true}, {"id": "s-hoarder", "name": "the hoarder", "type": "character", "sym": "❒", "start": {"extraHand": 5}, "rules": {"handLimit": 10, "extraDraw": 1}, "silly": true}], "formats": [{"id": "f-silly", "name": "silly", "about": "The standard deck plus every silly card. Anything can happen.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": true, "draft": "off", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand", "turnCheck": 50}}, {"id": "f-silly-draft", "name": "silly draft", "about": "Silly cards are allowed, and you draft the deck and your hands, so you decide how silly it gets.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": true, "draft": "both", "draftPicks": 18, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand"}}], "file": "silly.json"}, {"hailey100": 1, "name": "tutorial", "about": "A gentle way in for new players.", "decks": [{"id": "d-tutorial", "name": "tutorial", "counts": {"p-1": 6, "p-2": 6, "p-5": 4, "tenor": 1, "p-d6": 3, "p-m1": 3, "p-m2": 3, "p-m5": 2, "p-md6": 0, "send": 3, "draw2": 3, "skip": 2, "shield": 2, "tax": 2, "gift": 2, "inspire": 2, "comeback": 1, "party": 1, "nudge": 2, "recycle": 2, "ward": 1, "m-double": 1, "m-bonus": 1, "m-soft": 1}}], "formats": [{"id": "f-tutorial", "name": "tutorial", "about": "First to 50 with a smaller, simpler deck. Mark anyone new and they get a tip whenever something comes up for the first time, plus suggested moves. Players who aren't new play as normal.", "deck": "d-tutorial", "rules": {"target": 50, "handSize": 5, "handLimit": 8, "floor": true, "allowPass": true, "hints": false, "silly": false, "draft": "off", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand", "newbies": true}}], "file": "tutorial.json"}];
+const BUNDLED_PACKS = [{"hailey100": 1, "name": "1k", "about": "First to 1000. Double points starts in play, and the deck is stuffed with big point cards.", "cards": [{"id": "1k-p20", "name": "+20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "20"}]}, {"id": "1k-p50", "name": "+50 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "50"}]}, {"id": "1k-p2d6", "name": "+2d6 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "2d6"}]}, {"id": "1k-p3d6", "name": "+3d6 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "3d6"}]}, {"id": "1k-pd20", "name": "+1d20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "1d20"}]}, {"id": "1k-m20", "name": "−20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "-20"}]}, {"id": "1k-md20", "name": "−1d20 points", "type": "point", "copies": 0, "effects": [{"op": "points", "target": "self", "amount": "-1d20"}]}, {"id": "1k-jackpot", "name": "jackpot", "type": "act", "copies": 0, "sym": "7", "effects": [{"op": "if", "cond": "roll", "v": 6, "then": [{"op": "points", "target": "self", "amount": "100"}], "else": [{"op": "points", "target": "self", "amount": "10"}]}]}, {"id": "1k-crescendo", "name": "crescendo", "type": "act", "copies": 0, "sym": "✶", "effects": [{"op": "addToChange", "amount": "3d6"}]}, {"id": "1k-heist", "name": "heist", "type": "act", "copies": 0, "sym": "⤵", "effects": [{"op": "transfer", "target": "choose", "amount": "3d6"}]}, {"id": "1k-landslide", "name": "landslide", "type": "act", "copies": 0, "sym": "≋", "effects": [{"op": "points", "target": "others", "amount": "-2d6"}]}, {"id": "1k-encore", "name": "encore", "type": "ability", "copies": 0, "cooldown": 3, "sym": "♪", "effects": [{"op": "points", "target": "self", "amount": "2d6"}]}], "decks": [{"id": "d-1k", "name": "1k", "counts": {"p-1": 0, "p-2": 2, "p-5": 8, "tenor": 10, "p-d6": 4, "p-m1": 1, "p-m2": 2, "p-m5": 4, "p-md6": 2, "1k-p20": 12, "1k-p50": 6, "1k-p2d6": 4, "1k-p3d6": 5, "1k-pd20": 6, "1k-m20": 4, "1k-md20": 3, "send": 4, "draw2": 3, "skip": 2, "reverse": 1, "swap": 1, "leech": 2, "steal": 2, "echo": 3, "shield": 3, "tax": 2, "quake": 1, "party": 1, "gamble": 2, "comeback": 1, "mulligan": 1, "calm": 0, "doubledown": 3, "again": 2, "swaphands": 1, "refresh": 1, "inspire": 3, "gift": 1, "1k-jackpot": 2, "1k-crescendo": 3, "1k-heist": 2, "1k-landslide": 1, "1k-encore": 2, "recycle": 2, "nudge": 2, "jinx": 1, "overclock": 2, "ward": 1, "pickpocket": 1, "m-double": 0, "m-half": 0, "m-upside": 0, "m-lucky": 0, "m-cursed": 0, "m-fast": 0, "m-abundance": 0, "m-frenzy": 0, "m-soft": 0, "m-bonus": 0}}], "formats": [{"id": "f-1k", "name": "1k", "about": "First to 1000. Everyone starts with 7 cards and double points is already in play.", "deck": "d-1k", "startMutator": "m-double", "rules": {"target": 1000, "handSize": 7, "handLimit": 10, "floor": false, "allowPass": false, "hints": false}}], "file": "1k.json"}, {"hailey100": 1, "name": "1v1 formats", "about": "Casual and competitive formats and decks for two players.", "decks": [{"id": "d-1v1-casual", "name": "1v1 casual", "counts": {"p-1": 5, "p-2": 5, "p-5": 5, "tenor": 2, "p-d6": 4, "p-m1": 3, "p-m2": 3, "p-m5": 2, "p-md6": 1, "send": 3, "draw2": 3, "skip": 1, "reverse": 0, "swap": 1, "leech": 2, "steal": 1, "echo": 2, "shield": 3, "tax": 1, "quake": 0, "party": 0, "gamble": 3, "comeback": 2, "mulligan": 1, "calm": 2, "doubledown": 2, "again": 1, "swaphands": 0, "refresh": 1, "inspire": 3, "gift": 1, "recycle": 2, "nudge": 2, "jinx": 0, "overclock": 1, "ward": 2, "pickpocket": 0, "m-double": 1, "m-half": 0, "m-upside": 1, "m-lucky": 2, "m-cursed": 0, "m-fast": 1, "m-abundance": 2, "m-frenzy": 1, "m-soft": 2, "m-bonus": 2}}, {"id": "d-1v1-comp", "name": "1v1 competitive", "counts": {"p-1": 4, "p-2": 5, "p-5": 5, "tenor": 2, "p-d6": 1, "p-m1": 2, "p-m2": 3, "p-m5": 3, "p-md6": 1, "send": 3, "draw2": 2, "skip": 2, "reverse": 0, "swap": 0, "leech": 2, "steal": 2, "echo": 2, "shield": 2, "tax": 1, "quake": 0, "party": 0, "gamble": 0, "comeback": 1, "mulligan": 1, "calm": 2, "doubledown": 2, "again": 1, "swaphands": 1, "refresh": 1, "inspire": 3, "gift": 1, "recycle": 2, "nudge": 1, "jinx": 1, "overclock": 1, "ward": 1, "pickpocket": 1, "m-double": 1, "m-half": 1, "m-upside": 1, "m-lucky": 0, "m-cursed": 0, "m-fast": 1, "m-abundance": 1, "m-frenzy": 1, "m-soft": 0, "m-bonus": 0}}], "formats": [{"id": "f-1v1-casual", "name": "1v1 casual", "about": "Forgiving: no going below 0, passing allowed, kinder deck.", "players": 2, "deck": "d-1v1-casual", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": true, "allowPass": true, "hints": false, "turnCheck": 50}}, {"id": "f-1v1-comp", "name": "1v1 competitive", "about": "Fewer coin flips and more ways to mess with each other. Smaller hand limit.", "players": 2, "deck": "d-1v1-comp", "rules": {"target": 100, "handSize": 5, "handLimit": 7, "floor": false, "allowPass": false, "hints": false}}], "file": "1v1.json"}, {"hailey100": 1, "name": "draft and pick/ban", "about": "Formats that build the deck or your hand before anyone plays.", "formats": [{"id": "f-draft", "name": "draft", "about": "Point cards are in. Everything else gets drafted into the deck, then everyone drafts their starting hand from packs passed around the table.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "both", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand"}}, {"id": "f-handdraft", "name": "hand draft", "about": "Everyone gets a pack, takes a card and passes the rest on until your starting hands are full.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "hands", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand"}}, {"id": "f-pickban", "name": "pick and ban", "about": "12 random cards go on the table. Everyone bans two (every copy leaves the deck), then picks one to start with.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "off", "draftPicks": 16, "draftOffer": 4, "pickban": "random", "pbPool": 12, "bans": 2, "picks": 1, "pickTo": "hand"}}, {"id": "f-1v1-draft", "name": "1v1 draft", "about": "Competitive 1v1: ban two from the whole deck, pick one into your hand, then draft the rest of your hand.", "players": 2, "deck": "d-1v1-comp", "rules": {"target": 100, "handSize": 5, "handLimit": 7, "floor": false, "allowPass": false, "hints": false, "silly": false, "draft": "hands", "draftPicks": 16, "draftOffer": 4, "pickban": "deck", "pbPool": 12, "bans": 2, "picks": 1, "pickTo": "hand"}}], "file": "draft.json"}, {"hailey100": 1, "name": "examples", "about": "Examples of cards that mix effects and rules. Every card type can do both. They have 0 copies, so they only appear in decks you add them to.", "cards": [{"id": "x-frenzy", "name": "frenzy", "type": "ability", "copies": 0, "cooldown": 5, "sym": "‼", "effects": [{"op": "rules", "target": "self", "dur": "turn", "rules": {"extraPlays": 1}}]}, {"id": "x-adrenaline", "name": "adrenaline", "type": "act", "copies": 0, "sym": "⚡", "effects": [{"op": "draw", "target": "self", "n": 1}], "rules": {"extraPlays": 1}}, {"id": "x-jackpot", "name": "jackpot", "type": "mutator", "copies": 0, "sym": "$", "effects": [{"op": "points", "target": "all", "amount": "3"}], "rules": {"gainAdd": 1}}, {"id": "x-hoarder", "name": "the hoarder", "type": "character", "sym": "▤", "effects": [{"op": "draw", "target": "self", "n": 2}], "rules": {"handLimit": 2}}, {"id": "x-skin", "name": "thick skin", "type": "ability", "copies": 0, "cooldown": 0, "sym": "◍", "rules": {"lossReduce": 1}}], "file": "examples.json"}, {"hailey100": 1, "name": "silly", "about": "Ridiculous, unbalanced cards. They're marked silly, so they only show up in formats that allow silly cards.", "cards": [{"id": "s-bass", "name": "the bass", "type": "point", "copies": 1, "sym": "50", "effects": [{"op": "points", "target": "self", "amount": "50"}], "silly": true}, {"id": "s-everyone", "name": "everybody wins", "type": "act", "copies": 1, "sym": "♥", "effects": [{"op": "points", "target": "all", "amount": "20"}], "silly": true}, {"id": "s-loop", "name": "infinite loop", "type": "act", "copies": 1, "sym": "∞", "effects": [{"op": "extraTurn"}, {"op": "extraTurn"}, {"op": "draw", "target": "self", "n": 3}], "silly": true}, {"id": "s-heist", "name": "grand theft deck", "type": "act", "copies": 1, "sym": "⇠", "effects": [{"op": "steal", "target": "choose", "n": 3}, {"op": "transfer", "target": "choose", "amount": "2d6"}], "silly": true}, {"id": "s-nuke", "name": "nuke", "type": "act", "copies": 1, "sym": "☢", "effects": [{"op": "points", "target": "others", "amount": "-25"}], "silly": true}, {"id": "s-fate", "name": "coin of fate", "type": "act", "copies": 2, "sym": "◐", "effects": [{"op": "if", "cond": "roll", "v": 4, "then": [{"op": "points", "target": "self", "amount": "50"}], "else": [{"op": "points", "target": "self", "amount": "-50"}]}], "silly": true}, {"id": "s-conductor", "name": "the conductor", "type": "ability", "copies": 1, "cooldown": 1, "sym": "♫", "effects": [{"op": "points", "target": "self", "amount": "1d6"}], "silly": true}, {"id": "s-triple", "name": "triple threat", "type": "mutator", "copies": 1, "sym": "×3", "rules": {"mult": 3}, "silly": true}, {"id": "s-soloist", "name": "the soloist", "type": "character", "sym": "★", "start": {"points": 50}, "silly": true}, {"id": "s-hoarder", "name": "the hoarder", "type": "character", "sym": "❒", "start": {"extraHand": 5}, "rules": {"handLimit": 10, "extraDraw": 1}, "silly": true}], "formats": [{"id": "f-silly", "name": "silly", "about": "The standard deck plus every silly card. Anything can happen.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": true, "draft": "off", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand", "turnCheck": 50}}, {"id": "f-silly-draft", "name": "silly draft", "about": "Silly cards are allowed, and you draft the deck and your hands, so you decide how silly it gets.", "deck": "standard", "rules": {"target": 100, "handSize": 5, "handLimit": 8, "floor": false, "allowPass": false, "hints": false, "silly": true, "draft": "both", "draftPicks": 18, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand"}}], "file": "silly.json"}, {"hailey100": 1, "name": "tutorial", "about": "A gentle way in for new players.", "decks": [{"id": "d-tutorial", "name": "tutorial", "counts": {"p-1": 6, "p-2": 6, "p-5": 4, "tenor": 1, "p-d6": 3, "p-m1": 3, "p-m2": 3, "p-m5": 2, "p-md6": 0, "send": 3, "draw2": 3, "skip": 2, "shield": 2, "tax": 2, "gift": 2, "inspire": 2, "comeback": 1, "party": 1, "nudge": 2, "recycle": 2, "ward": 1, "m-double": 1, "m-bonus": 1, "m-soft": 1}}], "formats": [{"id": "f-tutorial", "name": "tutorial", "about": "First to 50 with a smaller, simpler deck. Mark anyone new and they get a tip whenever something comes up for the first time, plus suggested moves. Players who aren't new play as normal.", "deck": "d-tutorial", "rules": {"target": 50, "handSize": 5, "handLimit": 8, "floor": true, "allowPass": true, "hints": false, "silly": false, "draft": "off", "draftPicks": 16, "draftOffer": 4, "pickban": "off", "pbPool": 12, "bans": 1, "picks": 1, "pickTo": "hand", "newbies": true}}], "file": "tutorial.json"}];
 PACKS = [...BUNDLED_PACKS.map((p) => ({ ...normPack(p, p.file), bundled: true })), ...LOCALPACKS];
 rebuildLib();
 
@@ -2308,6 +2382,7 @@ async function runGame(g, io) {
   io.g = g; const GAME = io.game; const LOGL = () => GAME.log.length;
   try {
     if (g.pregame) { if (io === GIO) render(); await pregame(g, io); if (io === GIO) render(); }
+    if (!g.over && !io.dead) await gameStart(g, io);
     while (!g.over && !io.dead) {
       if (g.turnNo > 3000) { g.over = true; break; }
       GAME.turns.push({ f: GAME.frames.length, s: JSON.stringify(g), log: LOGL(), turn: g.turnNo + 1 });
@@ -2819,7 +2894,7 @@ function modalHTML() {
     if (c.type !== 'character') rows.push(['Copies in deck', +c.copies || 0]);
     if (c.type === 'ability') rows.push(['Cooldown', `${+c.cooldown || 0} turns (every player's turn counts)`]);
     if (c.text && c.text.trim() && c.text.trim() !== autoText(c)) rows.push(['Rules text', esc(autoText(c)) || '—']);
-    const body = c.type === 'mutator' || c.type === 'character' ? '' : `<p class="label">Steps, in order</p>${effectSummaryHTML(c.effects)}`;
+    const body = (c.effects || []).length ? `<p class="label">Steps, in order</p>${effectSummaryHTML(c.effects)}` : '';
     return `<div class="overlay" data-close="modal"><div class="modal"><div class="mhead"><h2>${esc(c.name)}</h2><span class="spacer"></span><button class="iconbtn" data-m="close" title="Close">✕</button></div>
       <div class="mbody detail">${cardHTML(c, { size: 'lg', copies: c.type !== 'character' })}
         <div><dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>${body}
@@ -2885,7 +2960,7 @@ function newId(name) { const base = String(name || 'card').toLowerCase().replace
 const OP_DEFAULTS = {
   points: { target: 'self', amount: '5' }, transfer: { target: 'choose', amount: '1d6' }, draw: { target: 'self', n: 1 }, discard: { target: 'choose', n: 1 },
   steal: { target: 'choose', n: 1 }, give: { target: 'choose', n: 1 }, skip: { target: 'choose' }, swapPoints: { target: 'choose' }, swapHands: { target: 'choose' },
-  shield: { target: 'self' }, refresh: { target: 'self' }, boost: { amount: '1d6' }, double: { x: 2 }, mulligan: { n: 0 },
+  shield: { target: 'self' }, refresh: { target: 'self' }, rules: { target: 'self', dur: 'turn', n: 2, rules: { extraPlays: 1 } }, boost: { amount: '1d6' }, double: { x: 2 }, mulligan: { n: 0 },
   if: { cond: 'roll', v: 4, then: [], else: [] },
 };
 function openEditor(def) {
@@ -2910,29 +2985,48 @@ function stepHTML(e, path, i, n) {
     fields += `<select data-path="${path}" data-f="cond" aria-label="Condition">${Object.entries(CONDS).map(([k, l]) => `<option value="${k}"${k === e.cond ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
     if (e.cond in COND_NEEDS_V) fields += `<input type="number" class="num" data-path="${path}" data-f="v" value="${esc(e.v ?? COND_NEEDS_V[e.cond])}" aria-label="Value">`;
   }
+  if (f.includes('dur')) {
+    fields += `<select data-path="${path}" data-f="dur" aria-label="For how long"><option value="turn"${(e.dur || 'turn') === 'turn' ? ' selected' : ''}>Until the end of this turn</option><option value="turns"${e.dur === 'turns' ? ' selected' : ''}>For a number of turns</option><option value="game"${e.dur === 'game' ? ' selected' : ''}>For the rest of the game</option></select>`;
+    if (e.dur === 'turns') fields += `<input type="number" class="num" min="1" max="20" data-path="${path}" data-f="n" value="${esc(e.n ?? 2)}" aria-label="How many turns"><span class="muted">of their turns, counting this one if it's theirs</span>`;
+  }
+  const rulesBox = f.includes('rules') ? `<div class="ruleset inline">${ruleInputsHTML(e.rules || {}, `${path}.rules`)}</div>` : '';
   const branches = f.includes('then') ? `<div class="branch"><p class="label">Then</p>${stepsHTML(e.then || [], path + '.then')}<p class="label">Otherwise</p>${stepsHTML(e.else || [], path + '.else')}</div>` : '';
   return `<div class="step"><div class="srow">${opSel}${fields}<span class="ctl">
       <button class="btn sm" data-e="up" data-path="${path}" ${i === 0 ? 'disabled' : ''} title="Move up">↑</button>
       <button class="btn sm" data-e="down" data-path="${path}" ${i === n - 1 ? 'disabled' : ''} title="Move down">↓</button>
       <button class="btn sm danger" data-e="del" data-path="${path}" title="Remove step">✕</button></span></div>
-    <div class="muted" style="font-size:12px" data-desc="${path}">${esc(descEffect(e))}</div>${branches}</div>`;
+    <div class="muted" style="font-size:12px" data-desc="${path}">${esc(descEffect(e))}</div>${rulesBox}${branches}</div>`;
 }
 function cardPicker(list, key, types) {
   const opts = LIB.filter((c) => types.includes(c.type));
   return `<div class="picklist">${(list || []).map((id, i) => `<span class="chip">${esc(CARD[id]?.name || id)}<button data-e="pickdel" data-key="${key}" data-i="${i}" title="Remove">✕</button></span>`).join('')}
     <select data-pick-add="${key}" aria-label="Add a card"><option value="">+ add a card</option>${opts.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></div>`;
 }
+function ruleInputsHTML(r, rpath) {
+  const at = rpath ? ` data-rpath="${rpath}"` : '';
+  return RULES.map(([k, label, kind]) => {
+    if (kind === 'bool') return `<label class="toggle"><input type="checkbox" data-rule="${k}"${at} ${r[k] ? 'checked' : ''}><span class="sw"></span>${label}</label>`;
+    if (kind === 'dice') return `<label class="field"><span>${label}</span><select data-rule="${k}"${at}><option value="">Normal</option><option value="adv"${r[k] === 'adv' ? ' selected' : ''}>Roll twice, keep the higher</option><option value="dis"${r[k] === 'dis' ? ' selected' : ''}>Roll twice, keep the lower</option></select></label>`;
+    return `<label class="field"><span>${label}</span><input type="number" data-rule="${k}"${at} step="${kind === 'num' ? '0.5' : '1'}" value="${esc(r[k] ?? '')}" placeholder="${kind === 'num' ? '1' : '0'}"></label>`;
+  }).join('');
+}
+const EFFECT_HEAD = {
+  point: 'What it does when played, step by step', act: 'What it does when played, step by step', ability: 'What it does each time it is used, step by step',
+  mutator: 'What happens once, when it comes into play', character: 'What happens once, at the start of the game',
+};
+const RULES_HEAD = {
+  point: 'Rules for the rest of the turn it is played (for whoever plays it)', act: 'Rules for the rest of the turn it is played (for whoever plays it)',
+  ability: 'Always on while its owner has it (a passive)', mutator: 'While it is in play (affects everyone)', character: 'For whoever picks this character',
+};
 function editorHTML() {
   const { d, err } = MODAL;
   const t = d.type;
-  const usesEffects = ['point', 'act', 'ability'].includes(t);
-  const usesRules = ['mutator', 'character'].includes(t);
-  const r = d.rules || {};
-  const ruleInputs = RULES.map(([k, label, kind]) => {
-    if (kind === 'bool') return `<label class="toggle"><input type="checkbox" data-rule="${k}" ${r[k] ? 'checked' : ''}><span class="sw"></span>${label}</label>`;
-    if (kind === 'dice') return `<label class="field"><span>${label}</span><select data-rule="${k}"><option value="">Normal</option><option value="adv"${r[k] === 'adv' ? ' selected' : ''}>Roll twice, keep the higher</option><option value="dis"${r[k] === 'dis' ? ' selected' : ''}>Roll twice, keep the lower</option></select></label>`;
-    return `<label class="field"><span>${label}</span><input type="number" data-rule="${k}" step="${kind === 'num' ? '0.5' : '1'}" value="${esc(r[k] ?? '')}" placeholder="${kind === 'num' ? '1' : '0'}"></label>`;
-  }).join('');
+  const ruleInputs = ruleInputsHTML(d.rules || {}, '');
+  // every card can have steps (what happens) and rules (what stays true). the one a type is mostly about is open, the other folds away until it has something in it
+  const mainFx = ['point', 'act', 'ability'].includes(t);
+  const mainRules = ['mutator', 'character'].includes(t);
+  const hasFx = (d.effects || []).length > 0, hasRules = Object.keys(d.rules || {}).length > 0;
+  const fold = (open, title, body) => `<details class="fold"${open ? ' open' : ''}><summary class="section-title">${title}</summary>${body}</details>`;
   const s = d.start || {};
   const preview = { ...d, name: d.name || 'Untitled', rules: d.rules, start: d.start };
   return `<div class="overlay"><div class="modal" style="width:min(1000px,100%)"><div class="mhead"><h2>${MODAL.orig ? 'Edit card' : 'New card'}</h2><span class="spacer"></span><button class="iconbtn" data-m="close" title="Close without saving">✕</button></div>
@@ -2944,8 +3038,8 @@ function editorHTML() {
         ${t === 'ability' ? `<label class="field"><span>Cooldown (turns)</span><input type="number" id="ed-cd" data-top="cooldown" min="0" max="20" value="${esc(d.cooldown ?? 3)}"></label>` : ''}
         <label class="field"><span>Symbol (optional)</span><input type="text" id="ed-sym" data-top="sym" value="${esc(d.sym || '')}" maxlength="4" placeholder="${esc(bigGlyph({ ...d, sym: '' }))}"></label>
       </div>
-      ${usesEffects ? `<p class="section-title">What it does, step by step</p>${stepsHTML(d.effects || [], 'effects')}<p class="note">"You" means whoever plays the card. A card someone else Sends you counts as yours. Amounts can be numbers (5, -5) or dice (1d6, -1d6, 2d6+1).</p>` : ''}
-      ${usesRules ? `<p class="section-title">${t === 'mutator' ? 'While it is in play (affects everyone)' : 'For whoever picks this character'}</p><div class="ruleset">${ruleInputs}</div>` : ''}
+      ${fold(mainFx || hasFx, EFFECT_HEAD[t], `${stepsHTML(d.effects || [], 'effects')}<p class="note">"You" means whoever plays the card. A card someone else Sends you counts as yours. Amounts can be numbers (5, -5) or dice (1d6, -1d6, 2d6+1). Use <b>Change the rules for a while</b> to give rules (like extra plays) for this turn, a few turns, or the rest of the game.</p>`)}
+      ${fold(mainRules || hasRules, RULES_HEAD[t], `<div class="ruleset">${ruleInputs}</div>`)}
       ${t === 'character' ? `<p class="section-title" style="margin-top:14px">At the start of the game</p>
         <div class="fgrid"><label class="field"><span>Starting points</span><input type="number" data-start="points" value="${esc(s.points ?? '')}" placeholder="0"></label>
         <label class="field"><span>Extra starting cards</span><input type="number" data-start="extraHand" min="0" max="10" value="${esc(s.extraHand ?? '')}" placeholder="0"></label></div>
@@ -2973,19 +3067,21 @@ function onEditorInput(e) {
     if (k === 'type') {
       if (e.type !== 'change') return;
       d.type = el.value;
-      if (['point', 'act', 'ability'].includes(d.type) && !d.effects) d.effects = [];
+      if (!d.effects) d.effects = [];
       if (d.type === 'point' && !d.effects.length) d.effects = [{ op: 'points', target: 'self', amount: '5' }];
       if (d.type === 'ability' && d.cooldown == null) d.cooldown = 3;
-      if (['mutator', 'character'].includes(d.type) && !d.rules) d.rules = {};
+      if (!d.rules) d.rules = {};
       renderLayer(); return;
     }
     d[k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value === '' ? '' : +el.value) : el.value;
     refreshPreview(); return;
   }
   if (el.dataset.rule) {
-    d.rules = d.rules || {};
+    let R;
+    if (el.dataset.rpath) { const parts = el.dataset.rpath.split('.'); const key = parts.pop(); const holder = getAt(parts.join('.')); R = holder[key] = holder[key] || {}; }
+    else R = d.rules = d.rules || {};
     const k = el.dataset.rule; const v = el.type === 'checkbox' ? el.checked : el.value;
-    if (v === '' || v === false) delete d.rules[k]; else d.rules[k] = el.type === 'number' ? +v : v;
+    if (v === '' || v === false) delete R[k]; else R[k] = el.type === 'number' ? +v : v;
     refreshPreview(); return;
   }
   if (el.dataset.start) {
@@ -3007,6 +3103,7 @@ function onEditorInput(e) {
       const fl = OPS[el.value].f; for (const k of Object.keys(keep)) if (fl.includes(k) && el.value !== 'if') step[k] = keep[k];
       renderLayer(); return;
     }
+    if (f === 'dur') { if (e.type !== 'change') return; step.dur = el.value; if (el.value === 'turns') step.n = step.n || 2; renderLayer(); return; }
     if (f === 'cond') { if (e.type !== 'change') return; step.cond = el.value; if (el.value in COND_NEEDS_V) step.v = COND_NEEDS_V[el.value]; else delete step.v; renderLayer(); return; }
     step[f] = el.type === 'number' ? +el.value : el.value;
     if (f === 'amount') el.classList.toggle('bad', !parseAmt(el.value));
@@ -3034,9 +3131,9 @@ function onEditorClick(b) {
     if (!String(d.name || '').trim()) { MODAL.err = 'Give the card a name.'; renderLayer(); return; }
     if (bad.length) { MODAL.err = `"${bad[0]}" isn't an amount. Use a number like 5 or -5, or dice like 1d6.`; renderLayer(); return; }
     d.name = d.name.trim();
-    if (!['point', 'act', 'ability'].includes(d.type)) delete d.effects;
+    if (!(d.effects || []).length && !['point', 'act', 'ability'].includes(d.type)) delete d.effects;
     if (d.type !== 'ability') delete d.cooldown;
-    if (!['mutator', 'character'].includes(d.type)) delete d.rules;
+    if (!Object.keys(d.rules || {}).length) delete d.rules;
     if (d.type !== 'character') { delete d.start; delete d.assist; }
     if (d.type === 'character') delete d.copies;
     if (!d.text) delete d.text; if (!d.sym) delete d.sym; if (!d.silly) delete d.silly;
@@ -3199,6 +3296,7 @@ function renderRules(main) {
 
 render();
 initFolder();
+netFromUrl();
 window.__h100 = { get G() { return G; }, get ASK() { return ASK; }, answer, startGame, get SETUP() { return SETUP; }, NET, LOG: () => LOG, get PACKS() { return PACKS; }, get MINE() { return MINE; }, get FOLDER() { return FOLDER; }, get LIB() { return LIB; }, get FORMATS() { return FORMATS; }, get GAMES() { return GAMES; } };
 
 // works offline and can be added to a phone's home screen when served from a website

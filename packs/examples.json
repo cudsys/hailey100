@@ -1,0 +1,86 @@
+{
+ "hailey100": 1,
+ "name": "examples",
+ "about": "Examples of cards that mix effects and rules. Every card type can do both. They have 0 copies, so they only appear in decks you add them to.",
+ "cards": [
+  {
+   "id": "x-frenzy",
+   "name": "frenzy",
+   "type": "ability",
+   "copies": 0,
+   "cooldown": 5,
+   "sym": "‼",
+   "effects": [
+    {
+     "op": "rules",
+     "target": "self",
+     "dur": "turn",
+     "rules": {
+      "extraPlays": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "x-adrenaline",
+   "name": "adrenaline",
+   "type": "act",
+   "copies": 0,
+   "sym": "⚡",
+   "effects": [
+    {
+     "op": "draw",
+     "target": "self",
+     "n": 1
+    }
+   ],
+   "rules": {
+    "extraPlays": 1
+   }
+  },
+  {
+   "id": "x-jackpot",
+   "name": "jackpot",
+   "type": "mutator",
+   "copies": 0,
+   "sym": "$",
+   "effects": [
+    {
+     "op": "points",
+     "target": "all",
+     "amount": "3"
+    }
+   ],
+   "rules": {
+    "gainAdd": 1
+   }
+  },
+  {
+   "id": "x-hoarder",
+   "name": "the hoarder",
+   "type": "character",
+   "sym": "▤",
+   "effects": [
+    {
+     "op": "draw",
+     "target": "self",
+     "n": 2
+    }
+   ],
+   "rules": {
+    "handLimit": 2
+   }
+  },
+  {
+   "id": "x-skin",
+   "name": "thick skin",
+   "type": "ability",
+   "copies": 0,
+   "cooldown": 0,
+   "sym": "◍",
+   "rules": {
+    "lossReduce": 1
+   }
+  }
+ ]
+}
